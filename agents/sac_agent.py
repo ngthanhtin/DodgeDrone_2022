@@ -147,7 +147,7 @@ class SACAgent(BaseAgent):
 
         # self.action_space = Box(-1, 1, (4, ))
         self.action_space = Box(-1, 1, (self.num_envs, 4))
-        
+
         # self.act_dim = self.action_space.shape[0]
         self.act_dim = self.action_space.shape[1]
         
@@ -278,8 +278,8 @@ class SACAgent(BaseAgent):
         # print("sending frame id: ", self.frame_id, "received frame id: ", receive_frame_id)
         self.frame_id+=1
         rgb_img, depth_img = self.get_RGB_and_Depth(env)
-        camera = rgb_img
-
+        camera = depth_img
+        
         # return image, features (vae), state, reward, done, info
         return camera, self._encode((obs, camera)), obs, reward, done, info
 
@@ -300,7 +300,8 @@ class SACAgent(BaseAgent):
         # rgb_img_tile = cv2.vconcat([cv2.hconcat(im_list_h) for im_list_h in rgb_img_list]) #(240, 320, 3)
         rgb_img_tile = np.stack(np.array(rgb_img_list))
         rgb_img_tile = np.squeeze(rgb_img_tile)
-        
+        rgb_img_tile = rgb_img_tile/255.
+
         # depth image
         raw_depth_images = env.getDepthImage()
         depth_img_list = []
@@ -315,7 +316,7 @@ class SACAgent(BaseAgent):
         depth_img_tile = np.squeeze(depth_img_tile)
         depth_img_tile = np.expand_dims(depth_img_tile, -1)
         # depth_img_tile = depth_img_tile*255.
-
+        
         return rgb_img_tile, depth_img_tile
 
     def _reset(self, env, random_pos=False):
@@ -327,7 +328,7 @@ class SACAgent(BaseAgent):
         # print("sending frame id: ", self.frame_id, "received frame id: ", receive_frame_id)
         self.frame_id+=1
         rgb_img, depth_img = self.get_RGB_and_Depth(env)
-        camera = rgb_img
+        camera = depth_img
 
         return camera, self._encode((state, camera)), state
 
@@ -628,7 +629,7 @@ class SACAgent(BaseAgent):
     def log_val_metrics_to_tensorboard(self, info, ep_ret, n_eps, n_val_steps):
         self.tb_logger.add_scalar("val/episodic_return", ep_ret, n_eps)
         self.tb_logger.add_scalar("val/ep_n_steps", n_val_steps, n_eps)
-        r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
+        r = [v["episode"]["r"] + 1 for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
         lin_vel_reward = [v["episode"]["lin_vel_reward"] for v in self.metadata["info"] if v != {}]
         collision_penalty = [v["episode"]["collision_penalty"] for v in self.metadata["info"] if v != {}]
@@ -677,7 +678,7 @@ class SACAgent(BaseAgent):
     def log_train_metrics_to_tensorboard(self, ep_ret, t, t_start):
         self.tb_logger.add_scalar("train/lr", np.array(self.pi_scheduler.get_last_lr()), self.episode_num)
         self.tb_logger.add_scalar("train/episodic_return", ep_ret, self.episode_num)
-        r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
+        r = [v["episode"]["r"] + 1 for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
         lin_vel_reward = [v["episode"]["lin_vel_reward"] for v in self.metadata["info"] if v != {}]
         collision_penalty = [v["episode"]["collision_penalty"] for v in self.metadata["info"] if v != {}]
