@@ -215,7 +215,6 @@ class SACAgent(BaseAgent):
         loss_q2 = ((q2 - backup) ** 2).mean()
 
         loss_q = loss_q1 + loss_q2
-
         # Useful info for logging
         q_info = dict(
             Q1Vals=q1.detach().cpu().numpy(), Q2Vals=q2.detach().cpu().numpy()
@@ -256,7 +255,7 @@ class SACAgent(BaseAgent):
         loss_pi, pi_info = self.compute_loss_pi(data)
         loss_pi.backward()
         self.pi_optimizer.step()
-
+        self.pi_scheduler.step()
         # Unfreeze Q-networks so you can optimize it at next DDPG step.
         for p in self.q_params:
             p.requires_grad = True
@@ -452,6 +451,14 @@ class SACAgent(BaseAgent):
         self.pi_scheduler = torch.optim.lr_scheduler.StepLR(
             self.pi_optimizer, 1, gamma=0.5
         )
+        # # linear learning rate decay
+        # num_of_updates = self.total_timesteps // (self.num_envs * self.cfg['batch_size'])
+        # pi_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     self.pi_optimizer, lr_lambda=lambda step: 1 - (step / float(num_of_updates))
+        # )
+        # q_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     self.pi_optimizer, lr_lambda=lambda step: 1 - (step / float(num_of_updates))
+        # )
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.actor_critic_target.parameters():
@@ -665,42 +672,8 @@ class SACAgent(BaseAgent):
         )
 
 
-        # try:
-        #     self.tb_logger.add_scalar(
-        #     "val/ep_total_rewards",
-        #     self.metadata["info"]["episode"]["r"],
-        #     self.episode_num,
-        #     )
-        #     self.tb_logger.add_scalar(
-        #         "val/ep_length",
-        #         self.metadata["info"]["episode"]["l"],
-        #         self.episode_num,
-        #     )
-        #     self.tb_logger.add_scalar(
-        #         "val/ep_lin_vel_reward",
-        #         self.metadata["info"]["episode"]["lin_vel_reward"],
-        #         self.episode_num,
-        #     )
-        #     self.tb_logger.add_scalar(
-        #         "val/ep_collision_penalty",
-        #         self.metadata["info"]["episode"]["collision_penalty"],
-        #         self.episode_num,
-        #     )
-        #     self.tb_logger.add_scalar(
-        #         "val/ep_ang_vel_penalty",
-        #         self.metadata["info"]["episode"]["ang_vel_penalty"],
-        #         self.episode_num,
-        #     )
-        #     self.tb_logger.add_scalar(
-        #         "val/ep_survive_rew",
-        #         self.metadata["info"]["episode"]["survive_rew"],
-        #         self.episode_num,
-        #     )
-        # except:
-        #     pass
-
-
     def log_train_metrics_to_tensorboard(self, ep_ret, t, t_start):
+        self.tb_logger.add_scalar("train/lr", np.array(self.pi_scheduler.get_lr()), self.episode_num)
         self.tb_logger.add_scalar("train/episodic_return", ep_ret, self.episode_num)
         r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
@@ -746,36 +719,5 @@ class SACAgent(BaseAgent):
             survive_rew_mean,
             self.episode_num,
         )
-
-        # self.tb_logger.add_scalar(
-        #     "train/ep_total_rewards",
-        #     self.metadata["info"]["episode"]["r"],
-        #     self.episode_num,
-        # )
-        # self.tb_logger.add_scalar(
-        #     "train/ep_length",
-        #     self.metadata["info"]["episode"]["l"],
-        #     self.episode_num,
-        # )
-        # self.tb_logger.add_scalar(
-        #     "train/ep_lin_vel_reward",
-        #     self.metadata["info"]["episode"]["lin_vel_reward"],
-        #     self.episode_num,
-        # )
-        # self.tb_logger.add_scalar(
-        #     "train/ep_collision_penalty",
-        #     self.metadata["info"]["episode"]["collision_penalty"],
-        #     self.episode_num,
-        # )
-        # self.tb_logger.add_scalar(
-        #     "train/ep_ang_vel_penalty",
-        #     self.metadata["info"]["episode"]["ang_vel_penalty"],
-        #     self.episode_num,
-        # )
-        # self.tb_logger.add_scalar(
-        #     "train/ep_survive_rew",
-        #     self.metadata["info"]["episode"]["survive_rew"],
-        #     self.episode_num,
-        # )
        
         self.tb_logger.add_scalar("train/ep_n_steps", t - t_start, self.episode_num)

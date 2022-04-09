@@ -39,9 +39,6 @@ class ReplayBuffer:
 
     def sample_batch(self, batch_size=32):
 
-        # idxs = np.random.choice(
-        #     (self.size, self.num_envs), size=min(batch_size, self.size, self.num_envs), replace=True
-        # )
         idxs = np.random.choice(
             self.size, size=min(batch_size, self.size), replace=False
         )
@@ -52,9 +49,7 @@ class ReplayBuffer:
             rew=self.rew_buf[idxs],
             done=self.done_buf[idxs],
         )
-        self.weights = torch.tensor(
-            np.zeros([min(batch_size, self.size), self.num_envs]), dtype=torch.float32, device=DEVICE
-        )
+
         return {
             k: torch.tensor(v, dtype=torch.float32, device=DEVICE)
             for k, v in batch.items()
