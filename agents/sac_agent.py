@@ -336,6 +336,7 @@ class SACAgent(BaseAgent):
         state, img = o # img shape: (240, 320, 3)
         if self.num_envs == 1:
             img = np.expand_dims(img, 0)
+        
         if self.cfg["use_encoder_type"] == "vae":
             # img_embed = self.backbone.encode_raw(img, DEVICE)[0][0]
             img_embed = self.backbone.encode_raw(img, DEVICE)[0]

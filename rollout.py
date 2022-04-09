@@ -11,6 +11,7 @@ def run_evaluation(args):
         num_envs = args.n_envs
     else:
         num_envs = 1
+    
     evaluator = Evaluator(
         num_envs=num_envs,
         agent_config=agent_config,
@@ -33,7 +34,7 @@ def run_evaluation(args):
 def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", type=int, default=1, help="1: Train, 0: Evaluate")
-    parser.add_argument("--n_envs", type=int, default=1, help="100: Train, 1: Evaluate")
+    parser.add_argument("--n_envs", type=int, default=100, help="100: Train, 1: Evaluate")
     return parser
 
 if __name__ == "__main__":
