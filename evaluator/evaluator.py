@@ -57,7 +57,7 @@ class Evaluator:
     def evaluate(self):
         """Evaluate the episodes."""
 
-        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_770.statedict"
+        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/best_SAC_episode_9.statedict"
         self.agent.load_model(path=path_name)
         
         logger.info("Starting evaluation")
@@ -71,7 +71,7 @@ class Evaluator:
         print("Connect Unity")
         self.env.connectUnity()
 
-        for i in range(10):
+        for i in range(2):
             camera, features, state = self.agent._reset(self.env, random_pos=False)
             action = self.agent.select_action(features, encode=False)
             camera, features, state2, r, d, info = self.agent._step(self.env, action)
@@ -105,5 +105,5 @@ class Evaluator:
         self.env.reset(random=True)
 
         # set random seed
-        configure_random_seed(1024, env=self.env)
+        configure_random_seed(0, env=self.env)
         

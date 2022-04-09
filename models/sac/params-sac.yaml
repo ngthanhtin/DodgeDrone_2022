@@ -19,7 +19,7 @@ agent_kwargs:
     seed: 0
     gamma: 0.99
     polyak: 0.995
-    lr: 0.003
+    lr: 0.0003
     alpha: 0.2
     num_test_episodes: 1
     safety_margin: 4.2
@@ -32,7 +32,7 @@ agent_kwargs:
     update_after: 1000
     update_every: 1
     eval_every: 500
-    max_ep_len: 5000000
+    max_ep_len: 50000
     im_w: 144
     im_h: 144
     checkpoint: 'models/sac/checkpoints/best_sac_local_encoder-vae_small_seed-249_episode_480.statedict'
