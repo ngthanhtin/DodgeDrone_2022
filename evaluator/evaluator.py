@@ -22,8 +22,9 @@ class Evaluator:
     """Evaluator class which consists of a 1-hour pre-evaluation phase followed by an evaluation phase."""
 
     def __init__(
-        self, agent_config, env_sim_config):
+        self, num_envs, agent_config, env_sim_config):
         logger.info("Starting learn to flghtmare framework")
+        env_sim_config["simulation"]["num_envs"] = num_envs
         self.agent_config = agent_config
         self.env_sim_config = env_sim_config
 
@@ -46,8 +47,8 @@ class Evaluator:
             print("Connect Unity")
             self.env.connectUnity()
         # train   
-        # path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_0.statedict"
-        # self.agent.load_model(path=path_name)
+        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_770.statedict"
+        self.agent.load_model(path=path_name)
         self.agent.training(self.env)
         if render:
             print("Disconnecting Unity")
@@ -56,7 +57,7 @@ class Evaluator:
     def evaluate(self):
         """Evaluate the episodes."""
 
-        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_30.statedict"
+        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_770.statedict"
         self.agent.load_model(path=path_name)
         
         logger.info("Starting evaluation")
