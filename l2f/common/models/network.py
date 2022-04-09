@@ -68,7 +68,7 @@ class ActorCritic(nn.Module):
             activation,
             act_limit,
         )
-        
+
         self.q1 = Qfunction(cfg)
         self.q2 = Qfunction(cfg)
 

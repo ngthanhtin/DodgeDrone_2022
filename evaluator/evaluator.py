@@ -47,8 +47,8 @@ class Evaluator:
             print("Connect Unity")
             self.env.connectUnity()
         # train   
-        path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_770.statedict"
-        self.agent.load_model(path=path_name)
+        # path_name = "/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/results/SAC_episode_770.statedict"
+        # self.agent.load_model(path=path_name)
         self.agent.training(self.env)
         if render:
             print("Disconnecting Unity")
@@ -70,7 +70,7 @@ class Evaluator:
         # connect unity
         print("Connect Unity")
         self.env.connectUnity()
-
+        self.agent.deterministic = True
         for i in range(2):
             camera, features, state = self.agent._reset(self.env, random_pos=False)
             action = self.agent.select_action(features, encode=False)

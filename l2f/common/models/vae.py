@@ -78,11 +78,14 @@ class VAE(nn.Module):
         return self.bottleneck(self.encoder(x))[0]
 
     def encode_raw(self, x: np.ndarray, device) -> np.ndarray:
-        # assume x is RGB image with shape (bsz, H, W, 3)
-        p = np.zeros([x.shape[0], 144, 144, 3], np.float)#42
-        
+        # assume x is RGB image with shape (bsz, H, W, 3) or depth (bsz, H, W, 1)
+        p = np.zeros([x.shape[0], 144, 144, self.im_c], np.float)
+
         for i in range(x.shape[0]):
-            p[i] = cv2.resize(x[i], (144, 144)) / 255
+            if self.im_c == 3: #rgb
+                p[i] = cv2.resize(x[i], (144, 144))
+            if self.im_c == 1: # depth
+                p[i] = np.expand_dims(cv2.resize(x[i], (144, 144)), -1)
         x = p.transpose(0, 3, 1, 2)
         x = torch.as_tensor(x, device=device, dtype=torch.float)
         v = self.representation(x)

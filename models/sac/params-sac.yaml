@@ -12,7 +12,7 @@ agent_kwargs:
         hiddens: [32, 64, 64, 32, 32]
         state_hiddens:  [8, 8]
         actor_hiddens: [64, 64, 32]
-        im_c: 3
+        im_c: 1
         im_w: 144
         im_h: 144
         ac_input_dims: 32 
