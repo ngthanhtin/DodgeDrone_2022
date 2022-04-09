@@ -131,7 +131,7 @@ class SACAgent(BaseAgent):
     def set_params(self):
         self.save_episodes = True
         self.episode_num = 0
-        self.best_ret = 0
+        self.best_ret = -999
         self.t = 0
         self.deterministic = False
         self.atol = 1e-3
@@ -362,13 +362,12 @@ class SACAgent(BaseAgent):
 
         for j in range(self.cfg["num_test_episodes"]):
             camera, features, state = self._reset(env, random_pos=False)
+            a = self.select_action(features, encode=False)
             d, ep_ret, ep_len, n_val_steps, self.metadata = False, 0, 0, 0, {}
-            dummy_actions = np.random.rand(self.num_envs, self.act_dim) * 2 - np.ones(shape=(self.num_envs, self.act_dim))
-            camera, features, state2, r, d, info = self._step(env, dummy_actions)
+            camera, features, state2, r, d, info = self._step(env, a)
             experience, t = [], 0
-
-            while (len(np.nonzero(d)[0]) < 1) & (ep_len <= self.cfg["max_ep_len"]):
-            # if (len(np.nonzero(d)[0]) == 1) or (ep_len == self.cfg["max_ep_len"]):
+            
+            while (len(np.nonzero(d)[0]) < 5) & (ep_len <= self.cfg["max_ep_len"]):
                 # Take deterministic actions at test time
                 self.deterministic = True
                 self.t = 1e6
@@ -376,6 +375,7 @@ class SACAgent(BaseAgent):
                 camera2, features2, state2, r, d, info = self._step(env, a)
                 
                 ep_ret += sum(r)/len(r)
+            
                 ep_len += self.num_envs
                 n_val_steps += 1
 
@@ -417,7 +417,7 @@ class SACAgent(BaseAgent):
         return val_ep_rets
 
     def checkpoint_model(self, ep_ret, n_eps):
-        print(n_eps)
+        print("N eps: ", n_eps)
         # Save if best (or periodically)
         mean_ep_ret = ep_ret
         if mean_ep_ret > self.best_ret:  # and ep_ret > 100):
@@ -552,8 +552,8 @@ class SACAgent(BaseAgent):
                 ) = self.reset_episode(env, t)
 
             # End of trajectory handling
-            if (len(np.nonzero(d)[0]) == 1) or (ep_len == self.cfg["max_ep_len"]):
-                self.metadata["info"] = info
+            if (len(np.nonzero(d)[0]) >= 1) or (ep_len == self.cfg["max_ep_len"]):
+                self.metadata["info"] = [f for f in info if f != {}]
                 self.episode_num += 1
                 msg = f"[Ep {self.episode_num }] {self.metadata}"
                 print("-----------")
@@ -673,7 +673,7 @@ class SACAgent(BaseAgent):
 
 
     def log_train_metrics_to_tensorboard(self, ep_ret, t, t_start):
-        self.tb_logger.add_scalar("train/lr", np.array(self.pi_scheduler.get_lr()), self.episode_num)
+        self.tb_logger.add_scalar("train/lr", np.array(self.pi_scheduler.get_last_lr()), self.episode_num)
         self.tb_logger.add_scalar("train/episodic_return", ep_ret, self.episode_num)
         r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
