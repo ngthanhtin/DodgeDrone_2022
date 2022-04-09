@@ -71,13 +71,10 @@ class Evaluator:
         print("Connect Unity")
         self.env.connectUnity()
 
-        # while self.laps_completed < self.env_config.n_eval_laps:
         for i in range(10):
-            state = self.env.reset()
-            self.agent.register_reset(state)
-            
-            dummy_actions = np.random.rand(self.num_envs, act_dim) * 2 - np.ones(shape=(self.num_envs, act_dim))
-            camera, features, state2, r, d, info = self.agent._step(self.env, dummy_actions)
+            camera, features, state = self.agent._reset(self.env, random_pos=False)
+            action = self.agent.select_action(features, encode=False)
+            camera, features, state2, r, d, info = self.agent._step(self.env, action)
 
             while len(np.nonzero(d)[0]) == 0:
                 action = self.agent.select_action(features, encode=False)

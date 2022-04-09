@@ -255,7 +255,7 @@ class SACAgent(BaseAgent):
         loss_pi, pi_info = self.compute_loss_pi(data)
         loss_pi.backward()
         self.pi_optimizer.step()
-        self.pi_scheduler.step()
+        # self.pi_scheduler.step()
         # Unfreeze Q-networks so you can optimize it at next DDPG step.
         for p in self.q_params:
             p.requires_grad = True
@@ -328,20 +328,22 @@ class SACAgent(BaseAgent):
         self.frame_id+=1
         rgb_img, depth_img = self.get_RGB_and_Depth(env)
         camera = rgb_img
-        
+
         return camera, self._encode((state, camera)), state
 
     def _encode(self, o):
         state, img = o # img shape: (240, 320, 3)
         if self.num_envs == 1:
             img = np.expand_dims(img, 0)
-        
+            
         if self.cfg["use_encoder_type"] == "vae":
             # img_embed = self.backbone.encode_raw(img, DEVICE)[0][0]
             img_embed = self.backbone.encode_raw(img, DEVICE)[0]
 
             # state = (torch.tensor((state)).float().reshape(1, -1).to(DEVICE))
             state = (torch.tensor((state)).float().to(DEVICE))
+            if len(state.size()) == 1: # handle if num_envs = 1
+                state = state.unsqueeze(0)
             # out = torch.cat([img_embed.unsqueeze(0), state], dim=-1).squeeze(0)  # torch.Size([32])
             out = torch.cat([img_embed, state], dim=-1)
             self.using_state = 1
