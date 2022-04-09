@@ -89,12 +89,3 @@ class SquashedGaussianMLPActor(nn.Module):
         return pi_action, logp_pi
 
 
-class MLPQFunction(nn.Module):
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
-        super().__init__()
-        self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
-
-    def forward(self, obs, act):
-        q = self.q(torch.cat([obs, act], dim=-1))
-        return torch.squeeze(q, -1)  # Critical to ensure q has right shape.
-
