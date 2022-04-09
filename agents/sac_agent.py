@@ -139,7 +139,6 @@ class SACAgent(BaseAgent):
         self.pi_scheduler = None
         self.t_start = 0
         self.best_pct = 0
-        self.num_envs = 2
 
         # This is important: it allows child classes (that extend this one) to "push up" information
         # that this parent class should log
@@ -335,13 +334,11 @@ class SACAgent(BaseAgent):
 
     def _encode(self, o):
         state, img = o # img shape: (240, 320, 3)
-
+        if self.num_envs == 1:
+            img = np.expand_dims(img, 0)
         if self.cfg["use_encoder_type"] == "vae":
-            if self.num_envs == 1:
-                img = np.expand_dims(img, 0)
-            else:
-                # img_embed = self.backbone.encode_raw(img, DEVICE)[0][0]
-                img_embed = self.backbone.encode_raw(img, DEVICE)[0]
+            # img_embed = self.backbone.encode_raw(img, DEVICE)[0][0]
+            img_embed = self.backbone.encode_raw(img, DEVICE)[0]
 
             # state = (torch.tensor((state)).float().reshape(1, -1).to(DEVICE))
             state = (torch.tensor((state)).float().to(DEVICE))
