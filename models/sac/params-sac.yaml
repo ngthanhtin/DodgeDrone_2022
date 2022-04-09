@@ -27,7 +27,7 @@ agent_kwargs:
     save_freq: 10
     total_steps: 5000000
     replay_size: 25000
-    batch_size: 25000
+    batch_size: 512
     start_steps: 2000
     update_after: 2000
     update_every: 1
