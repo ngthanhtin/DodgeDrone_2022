@@ -151,7 +151,7 @@ def parser():
     parser.add_argument("--render", type=int, default=0, help="1: visualize")
     parser.add_argument("--load_weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
     parser.add_argument("--save_weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
-    parser.add_argument("--continue-training", type=int, default="1", help="continue training with a pretrained weight")
+    parser.add_argument("--continue-training", type=int, default="0", help="continue training with a pretrained weight")
     return parser
 
 if __name__ == "__main__":

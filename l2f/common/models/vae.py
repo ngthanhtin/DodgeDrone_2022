@@ -144,7 +144,7 @@ class VAE(nn.Module):
     def loss(self, actual, recon, mu, logvar, kld_weight=1.0):
         bce = F.binary_cross_entropy(recon, actual, reduction="mean")        
         kld = -0.5 * torch.mean(1 + logvar - mu ** 2 - logvar.exp())
-
+        
         return bce + kld * kld_weight
 
 def test(args):
@@ -194,9 +194,9 @@ def train(args):
     if args.continue_training:
         model.load_state_dict(torch.load(args.load_weight_path))
     #hyper params
-    lr = 1e-4
-    batch_size = 16
-    epochs = 10
+    lr = 1e-3
+    batch_size = 32
+    epochs = 1000
     
     optim = torch.optim.Adam(model.parameters(), lr=lr)
     #load data
@@ -217,6 +217,7 @@ def train(args):
             loss = model.loss(input, decode, mu, logvar, kld_weight=args.kld_weight) 
             loss.backward()
             optim.step()
+            # scheduler.step()
 
             loss = loss.item()
             current_loss += loss
@@ -228,14 +229,14 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", type=int, default=1, help="1: Train, 0: Evaluate")
     parser.add_argument("--im_channels", type=int, default=3, help="3: RGB, 1: Depth")
-    parser.add_argument("--sizes", type=int, default=224, help="Image width (height)")
-    parser.add_argument("--z-dim", type=int, default=128, help="Latent dims")
+    parser.add_argument("--sizes", type=int, default=144, help="Image width (height)")
+    parser.add_argument("--z-dim", type=int, default=32, help="Latent dims")
     parser.add_argument("--kld-weight", type=float, default=0.0, help="KL Divergence weight")
     parser.add_argument("--data", type=str, default="/home/tinvn/TIN/Agileflight_pictures/RGB/", help="data folder")
     parser.add_argument("--render", type=int, default=0, help="1: visualize")
     parser.add_argument("--load_weight_path", type=str, default="vae224.pth", help="weight path")
     parser.add_argument("--save_weight_path", type=str, default="vae224.pth", help="weight path")
-    parser.add_argument("--continue-training", type=int, default="1", help="continue training with a pretrained weight")
+    parser.add_argument("--continue-training", type=int, default="0", help="continue training with a pretrained weight")
     return parser
 
 if __name__ == "__main__":
