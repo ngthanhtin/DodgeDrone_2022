@@ -99,7 +99,7 @@ def test(args):
     print('load initial weights from: %s'%(weight_path))
     model.load_state_dict(torch.load(weight_path))
     model.eval()
-    folder = args.data
+    folder = args.data + '/images/'
     files = os.listdir(folder)
     f = random.choice(files)
 
@@ -146,7 +146,7 @@ def parser():
     parser.add_argument("--train", type=int, default=1, help="1: Train, 0: Evaluate")
     parser.add_argument("--im_channels", type=int, default=1, help="3: RGB, 1: Depth")
     parser.add_argument("--sizes", type=int, default=224, help="Image width (height)")
-    parser.add_argument("--data", type=str, default="/home/tinvn/TIN/Agileflight_pictures/Depth/images/", help="data folder")
+    parser.add_argument("--data", type=str, default="/home/tinvn/TIN/Agileflight_pictures/Depth/", help="data folder")
     parser.add_argument("--weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
     parser.add_argument("--render", type=int, default=0, help="1: visualize")
     return parser

@@ -27,17 +27,28 @@ class VAE(nn.Module):
         self.im_h = im_h
         self.im_w = im_w
 
+        # encoder_list = [
+        #     nn.Conv2d(im_c, 32, kernel_size=4, stride=2, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+        #     nn.ReLU(),
+        #     nn.Flatten(),
+        # ]
+
         encoder_list = [
-            nn.Conv2d(im_c, 32, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(im_c, 128, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(128, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(64, 64, kernel_size=4, stride=2),
             nn.ReLU(),
             nn.Flatten(),
         ]
+
         self.encoder = nn.Sequential(*encoder_list)
         sample_img = torch.zeros([1, im_c, im_h, im_w])
         em_shape = nn.Sequential(*encoder_list[:-1])(sample_img).shape[1:]
@@ -46,24 +57,41 @@ class VAE(nn.Module):
         self.fc2 = nn.Linear(h_dim, z_dim)
         self.fc3 = nn.Linear(z_dim, h_dim)
 
+        # self.decoder = nn.Sequential(
+        #     nn.Unflatten(1, em_shape),
+        #     nn.ConvTranspose2d(
+        #         em_shape[0],
+        #         128,
+        #         kernel_size=4,
+        #         stride=2,
+        #         padding=1,
+        #         output_padding=(0, 0),
+        #     ),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose2d(
+        #         64, 32, kernel_size=4, stride=2, padding=1, output_padding=(0, 0)
+        #     ),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose2d(32, im_c, kernel_size=4, stride=2, padding=1),
+        #     nn.Sigmoid(),
+        # )
+
         self.decoder = nn.Sequential(
             nn.Unflatten(1, em_shape),
             nn.ConvTranspose2d(
                 em_shape[0],
-                128,
+                64,
                 kernel_size=4,
                 stride=2,
-                padding=1,
-                output_padding=(0, 0),
             ),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(64, 128, kernel_size=4, stride=2, output_padding=[1, 1]),
             nn.ReLU(),
             nn.ConvTranspose2d(
-                64, 32, kernel_size=4, stride=2, padding=1, output_padding=(0, 0)
+                128, im_c, kernel_size=8, stride=4
             ),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, im_c, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid(),
         )
 
@@ -112,12 +140,13 @@ class VAE(nn.Module):
         return z, mu, logvar
 
     def loss(self, actual, recon, mu, logvar, kld_weight=1.0):
-        bce = F.binary_cross_entropy(recon, actual, reduction="sum")
+        bce = F.binary_cross_entropy(recon, actual, reduction="mean")        
         kld = -0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp())
+
         return bce + kld * kld_weight
 
 def test():
-    device = 'cuda:0'
+    device = 'cuda:2'
     model = VAE(im_c=3, im_h=144, im_w=144, z_dim=32).to(device)
     weight_path = '/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/l2f/common/models/vae.pth'
     print('load initial weights from: %s'%(weight_path))
@@ -144,6 +173,7 @@ def test():
     
     image = image.to(device)
     z, mu, logvar = model.encode(image)
+    print(z.shape)
     decoder = model.decode(z)
     decoder = decoder.squeeze()
     decoder = decoder.permute(1, 2, 0)
@@ -163,8 +193,9 @@ def train():
     z_dim = 128
     im_channel = 3
     model = VAE(im_c=im_channel, im_h=img_h, im_w=img_w, z_dim=z_dim).to(device)
+    
     # model.load_state_dict(torch.load('/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/l2f/common/models/vae.pth'))
-    lr = 1e-2
+    lr = 1e-1
     optim = torch.optim.Adamax(filter(lambda p: p.requires_grad, model.parameters()))
     optim = torch.optim.Adam(model.parameters(), lr=lr)
     #load data
@@ -182,7 +213,9 @@ def train():
             input = input.to(device)
             
             optim.zero_grad()
-            loss = model.loss(input, *model(input))
+            decode, mu, logvar = model.forward(input)
+            
+            loss = model.loss(input, decode, mu, logvar, kld_weight=0.0) 
             loss.backward()
             optim.step()
 
