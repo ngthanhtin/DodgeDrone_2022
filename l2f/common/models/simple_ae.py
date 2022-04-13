@@ -20,18 +20,18 @@ def add_noise(images, mean=0, std=0.1):
     return noisy_image
 
 class Auto_Encoder_Model(nn.Module):
-    def __init__(self, activation=nn.ReLU()):
+    def __init__(self, im_c=3, activation=nn.ReLU()):
         super(Auto_Encoder_Model, self).__init__()
         self.act = activation 
         # Encoder
-        self.conv1 = nn.Conv2d(3, 128, kernel_size=8, stride=4)
+        self.conv1 = nn.Conv2d(im_c, 128, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(128, 64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=4, stride=2)
 
         # Decoder
         self.tran_conv1 = nn.ConvTranspose2d(64, 64, kernel_size=4, stride=2)
         self.tran_conv2 = nn.ConvTranspose2d(64, 128, kernel_size=4, stride=2, output_padding=[1, 1])
-        self.tran_conv3 = nn.ConvTranspose2d(128, 3, kernel_size=8, stride=4)
+        self.tran_conv3 = nn.ConvTranspose2d(128, im_c, kernel_size=8, stride=4)
         
 
     def forward_pass(self, x):
@@ -54,7 +54,10 @@ class Auto_Encoder_Model(nn.Module):
 def train():
     #train AE
     device = 'cuda:0'
-    model = Auto_Encoder_Model().to(device)
+    im_channel = 1
+    im_w = 224
+    model = Auto_Encoder_Model(im_c=im_channel).to(device)
+    
     # model.load_state_dict(torch.load('./ae/ae_full_prelu.pth'))
     ae_criterion = torch.nn.MSELoss().to(device)
     optim = torch.optim.Adamax(filter(lambda p: p.requires_grad, model.parameters()))
@@ -62,10 +65,11 @@ def train():
     #load data
     # ToTensor already divided the image by 255
     batch_size = 16
-    dataset = datasets.ImageFolder('/home/tinvn/TIN/Agileflight_pictures/RGB/', transform=transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()]))
+    dataset = datasets.ImageFolder('/home/tinvn/TIN/Agileflight_pictures/Depth/',\
+         transform=transforms.Compose([transforms.Resize((224, 224)), transforms.Grayscale(), transforms.ToTensor()]))
     data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
     #train
-    epochs = 100
+    epochs = 10
     for epoch in range(0, epochs):
         current_loss = 0
         for i,data in enumerate(data_loader,0):
@@ -84,16 +88,16 @@ def train():
             current_loss += loss
         print('{} loss : {}'.format(epoch+1, batch_size*current_loss/len(data_loader)))
 
-    torch.save(model.state_dict(),'simple_ae_224.pth')
+    torch.save(model.state_dict(),'simple_ae_{}_depth_{}_size.pth'.format(im_channel, im_w))
 
 def test():
     device = 'cuda:0'
     model = Auto_Encoder_Model().to(device)
-    weight_path = './ae/ae_full_prelu.pth'
-    print('load initial weights CDAE from: %s'%(weight_path))
+    weight_path = 'simple_ae_224.pth'
+    print('load initial weights from: %s'%(weight_path))
     model.load_state_dict(torch.load(weight_path))
     model.eval()
-    folder = '../data/data_ae/images/'
+    folder = '/home/tinvn/TIN/Agileflight_pictures/RGB/images/'
     files = os.listdir(folder)
     f = random.choice(files)
 
@@ -124,7 +128,7 @@ def test():
     f.add_subplot(1,1, 1) #1,2,1
     plt.imshow(decoder.cpu().detach().numpy())
 
-    # f.add_subplot(1,2, 2)
+    # f.add_subplot(1, 2, 2)
     # plt.imshow(image_pil)
 
     print(time.time()-t)
