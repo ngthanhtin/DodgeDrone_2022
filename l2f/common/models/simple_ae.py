@@ -60,7 +60,8 @@ def train(args):
     im_w = args.sizes
     model = Auto_Encoder_Model(im_c=im_channel).to(device)
     
-    # model.load_state_dict(torch.load('./ae/ae_full_prelu.pth'))
+    if args.continue_training:
+        model.load_state_dict(torch.load(args.load_weight_path))
     ae_criterion = torch.nn.MSELoss().to(device)
     optim = torch.optim.Adamax(filter(lambda p: p.requires_grad, model.parameters()))
 
@@ -90,12 +91,12 @@ def train(args):
             current_loss += loss
         print('{} loss : {}'.format(epoch+1, batch_size*current_loss/len(data_loader)))
 
-    torch.save(model.state_dict(),'simple_ae_{}_depth_{}_size.pth'.format(im_channel, im_w))
+    torch.save(model.state_dict(),'{}'.format(args.save_weight_path))
 
 def test(args):
     device = 'cuda:0'
     model = Auto_Encoder_Model(im_c=args.im_channels).to(device)
-    weight_path = args.weight_path
+    weight_path = args.load_weight_path
     print('load initial weights from: %s'%(weight_path))
     model.load_state_dict(torch.load(weight_path))
     model.eval()
@@ -147,8 +148,10 @@ def parser():
     parser.add_argument("--im_channels", type=int, default=1, help="3: RGB, 1: Depth")
     parser.add_argument("--sizes", type=int, default=224, help="Image width (height)")
     parser.add_argument("--data", type=str, default="/home/tinvn/TIN/Agileflight_pictures/Depth/", help="data folder")
-    parser.add_argument("--weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
     parser.add_argument("--render", type=int, default=0, help="1: visualize")
+    parser.add_argument("--load_weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
+    parser.add_argument("--save_weight_path", type=str, default="simple_ae_1_depth_224_size.pth", help="weight path")
+    parser.add_argument("--continue-training", type=int, default="1", help="continue training with a pretrained weight")
     return parser
 
 if __name__ == "__main__":
