@@ -136,7 +136,8 @@ def test(args):
     f = plt.figure()
     f.add_subplot(1,1, 1) #1,2,1
     plt.imshow(decoder.cpu().detach().numpy())
-
+    cv2.imshow("a", decoder.cpu().detach().numpy())
+    cv2.waitKey(0)
     print(time.time()-t)
     plt.show()
 
