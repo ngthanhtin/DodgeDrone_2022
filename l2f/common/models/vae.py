@@ -10,12 +10,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from torchvision import datasets, transforms
+from torch.utils.data.sampler import SubsetRandomSampler
 
 class VAE(nn.Module):
     """Input should be (bsz, C, H, W) where C=3, H=42, W=144"""
 
-    def __init__(self, im_c=3, im_h=42, im_w=144, z_dim=32):
+    def __init__(self, im_c=3, im_h=144, im_w=144, z_dim=32):
         super().__init__()
 
         self.im_c = im_c
@@ -50,13 +51,13 @@ class VAE(nn.Module):
                 kernel_size=4,
                 stride=2,
                 padding=1,
-                output_padding=(1, 0),
+                output_padding=(0, 0),
             ),
             nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(
-                64, 32, kernel_size=4, stride=2, padding=1, output_padding=(1, 0)
+                64, 32, kernel_size=4, stride=2, padding=1, output_padding=(0, 0)
             ),
             nn.ReLU(),
             nn.ConvTranspose2d(32, im_c, kernel_size=4, stride=2, padding=1),
@@ -79,17 +80,17 @@ class VAE(nn.Module):
 
     def encode_raw(self, x: np.ndarray, device) -> np.ndarray:
         # assume x is RGB image with shape (bsz, H, W, 3) or depth (bsz, H, W, 1)
-        p = np.zeros([x.shape[0], 144, 144, self.im_c], np.float)
+        p = np.zeros([x.shape[0], 224, 224, self.im_c], np.float)
 
         for i in range(x.shape[0]):
             if self.im_c == 3: #rgb
-                p[i] = cv2.resize(x[i], (144, 144))
+                p[i] = cv2.resize(x[i], (224, 224), interpolation=cv2.INTER_AREA)
             if self.im_c == 1: # depth
-                p[i] = np.expand_dims(cv2.resize(x[i], (144, 144)), -1)
+                p[i] = np.expand_dims(cv2.resize(x[i], (224, 224)), -1)
         x = p.transpose(0, 3, 1, 2)
         x = torch.as_tensor(x, device=device, dtype=torch.float)
         v = self.representation(x)
-
+        
         return v, v.detach().cpu().numpy()
 
     def encode(self, x):
@@ -114,49 +115,59 @@ class VAE(nn.Module):
 
 
 if __name__ == "__main__":
-    # load img, data is in
-    # https://drive.google.com/file/d/1RW3ewoS4FwXlCRVh4Dcb_n_xPniqHoeW/view?usp=sharing
-    # with shape (10000, C=3, H=42, W=144), RGB format, 0~255
-    imgs = np.load("./imgs.npy")
-    # the original data is (384, 512, 3) RGB
-    # first resize to (144, 144, 3)
-    # then img = img[68:110, :, :]
-    # finally transpose img to (N, C, H, W)
-    # see vae.encode_raw for detail
-    n = imgs.shape[0]
+    # with 0~255
+    dataset = datasets.ImageFolder('/home/tinvn/TIN/Agileflight_pictures/RGB/', \
+        transform=transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()]))
+    # data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=True)
+    
+    device = "cuda:2" if torch.cuda.is_available() else "cpu"
+    bsz = 32
+    lr = 1e-4
+
+    n = len(dataset)
     indices = np.random.permutation(n)
     thres = int(n * 0.9)
-    train_indices, test_indices = indices[:thres], indices[thres:]
+    train_indices, valid_indices = indices[:thres], indices[thres:]
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(valid_indices)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    bsz = 32
-    lr = 1e-3
-    vae = VAE().to(device)
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=bsz, 
+                                            sampler=train_sampler)
+    validation_loader = torch.utils.data.DataLoader(dataset, batch_size=bsz,
+                                                    sampler=valid_sampler)
+
+
+    
+    vae = VAE(im_c=3, im_h=224, im_w=224, z_dim=64).to(device)
     optim = torch.optim.Adam(vae.parameters(), lr=lr)
     num_epochs = 1000
     best_loss = 1e10
     for epoch in range(num_epochs):
-        train_indices = np.random.permutation(train_indices)
-        test_indices = np.random.permutation(test_indices)
+        
         train_loss = []
+        # Train
         vae.train()
-        for i in tqdm.trange(
-            len(train_indices) // bsz, desc=f"Epoch #{epoch + 1} train"
-        ):
-            index = train_indices[bsz * i : bsz * (i + 1)]
-            img = torch.as_tensor(imgs[index] / 255.0, device=device, dtype=torch.float)
-            loss = vae.loss(img, *vae(img))
+        # Train:   
+        for batch_index, data in enumerate(train_loader):
+            input, _ = data
+            input = input.to(device)
+            
+            loss = vae.loss(input, *vae(input))
             optim.zero_grad()
             loss.backward()
             optim.step()
             train_loss.append(loss.item())
         train_loss = np.mean(train_loss)
         test_loss = []
+        # Eval
         vae.eval()
-        for i in tqdm.trange(len(test_indices) // bsz, desc=f"Epoch #{epoch + 1} test"):
-            index = test_indices[bsz * i : bsz * (i + 1)]
-            img = torch.as_tensor(imgs[index] / 255.0, device=device, dtype=torch.float)
-            loss = vae.loss(img, *vae(img), kld_weight=0.0)
+        for batch_index, data in enumerate(validation_loader):
+            input, _ = data
+            # input = input.view(input.size(0), input.size(2), input.size(3), -1)
+            input = input.to(device)
+
+            loss = vae.loss(input, *vae(input), kld_weight=0.0)
             test_loss.append(loss.item())
         test_loss = np.mean(test_loss)
         print(f"#{epoch + 1} train_loss: {train_loss:.6f}, test_loss: {test_loss:.6f}")
@@ -164,15 +175,4 @@ if __name__ == "__main__":
             best_loss = test_loss
             print(f"save model at epoch #{epoch + 1}")
             torch.save(vae.state_dict(), "vae.pth")
-        # print imgs for visualization
-        orig_img = torch.as_tensor(
-            imgs[test_indices[0]] / 255.0, device=device, dtype=torch.float
-        )
-        vae_img = vae(orig_img[None])[0][0]
-        # (C, H, W)/RGB -> (H, W, C)/BGR
-        cv2.imwrite(
-            "orig.png", orig_img.detach().cpu().numpy()[::-1].transpose(1, 2, 0) * 255
-        )
-        cv2.imwrite(
-            "vae.png", vae_img.detach().cpu().numpy()[::-1].transpose(1, 2, 0) * 255
-        )
+        

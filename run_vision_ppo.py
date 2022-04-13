@@ -49,7 +49,6 @@ def main():
     # create training environment
     train_env = VisionEnv_v1(dump(cfg, Dumper=RoundTripDumper), False)
     train_env = wrapper.FlightEnvVec(train_env)
-
     # set random seed
     configure_random_seed(args.seed, env=train_env)
 
@@ -62,6 +61,7 @@ def main():
     eval_env = wrapper.FlightEnvVec(
         VisionEnv_v1(dump(cfg, Dumper=RoundTripDumper), False)
     )
+
     cfg["simulation"]["num_envs"] = old_num_envs
 
     # save the configuration and other files
@@ -95,31 +95,13 @@ def main():
             env_cfg=cfg,
             verbose=1,
         )
-
-        # load pretrained policy
-        # weight = rsg_root + "/saved/PPO_{0}/Policy/iter_{1:05d}.pth".format(1, 2000)
-        # env_rms = rsg_root +"/saved/PPO_{0}/RMS/iter_{1:05d}.npz".format(1, 2000)
-
-        # device = get_device("auto")
-        # saved_variables = torch.load(weight, map_location=device)
-        # # Create policy object
-        # policy = MlpPolicy(**saved_variables["data"])
-        # #
-        # policy.action_net = torch.nn.Sequential(policy.action_net, torch.nn.Tanh())
-        # # Load weights
-        # policy.load_state_dict(saved_variables["state_dict"], strict=False)
-        # policy.to(device)
-        # model.policy = policy
         #
-        model.learn(total_timesteps=int(5 * 1e7), log_interval=(10, 50))
+        model.learn(total_timesteps=int(5 * 1e8), log_interval=(10, 50))
     else:
         os.system(os.environ["FLIGHTMARE_PATH"] + "/flightrender/RPG_Flightmare.x86_64 &")
         #
-        # weight = rsg_root + "/saved/PPO_{0}/Policy/iter_{1:05d}.pth".format(args.trial, args.iter)
-        # env_rms = rsg_root +"/saved/PPO_{0}/RMS/iter_{1:05d}.npz".format(args.trial, args.iter)
-
-        weight = rsg_root + "/saved/PPO_2/Policy/iter_02000.pth"
-        env_rms = rsg_root +"/saved/PPO_2/RMS/iter_02000.npz"
+        weight = rsg_root + "/saved/PPO_{0}/Policy/iter_{1:05d}.pth".format(args.trial, args.iter)
+        env_rms = rsg_root +"/saved/PPO_{0}/RMS/iter_{1:05d}.npz".format(args.trial, args.iter)
 
         device = get_device("auto")
         saved_variables = torch.load(weight, map_location=device)

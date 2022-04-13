@@ -8,17 +8,17 @@ https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/sac.py
 import itertools
 import queue, threading
 from copy import deepcopy
+from tkinter import E
 import cv2
 
 import torch
 import numpy as np
 from gym.spaces import Box, Discrete
-from torch.optim import Adam
+from torch.optim import Adam, SGD
 
 from agents.base import BaseAgent
 from l2f.common.models.network import ActorCritic
 from l2f.common.models.vae import VAE
-from l2f.common.utils import RecordExperience
 from l2f.common.utils import setup_logging
 
 from ruamel.yaml import YAML
@@ -29,9 +29,9 @@ from stable_baselines3.common.utils import get_device
 
 DEVICE = get_device('auto')
 
-# seed = np.random.randint(255)
-# torch.manual_seed(seed)
-# np.random.seed(seed)
+seed = np.random.randint(255)
+torch.manual_seed(seed)
+np.random.seed(seed)
 
 
 class SACAgent(BaseAgent):
@@ -42,12 +42,6 @@ class SACAgent(BaseAgent):
 
         self.cfg = self.load_model_config("./python2/models/sac/params-sac.yaml")
         self.file_logger, self.tb_logger = self.setup_loggers()
-
-        if self.cfg["record_experience"]:
-            self.setup_experience_recorder()
-
-        # Action limit for clamping: critically, assumes all dimensions share the same bound!
-        # self.act_limit = self.action_space.high[0]
 
         self.setup_vision_encoder()
         self.num_envs = num_envs
@@ -63,15 +57,17 @@ class SACAgent(BaseAgent):
             obs = self._encode(obs)
         if self.t > self.cfg["start_steps"]:
             a = self.actor_critic.act(obs.to(DEVICE), self.deterministic)
-            a = a  # numpy array...
             self.record["transition_actor"] = "learner"
         else:
             a = self.action_space.sample()
+            # action_space = Box(-1, 1, (self.num_envs, 4), dtype=np.float64)
+            # a = action_space.sample()
             self.record["transition_actor"] = "random"
         self.t = self.t + 1
         
         # a = np.expand_dims(a, 0) # to be compatible with envs
         a = a.astype(np.float64) # to be compatible with envs
+
         return a
 
     def register_reset(self, obs) -> np.array:
@@ -87,19 +83,6 @@ class SACAgent(BaseAgent):
 
     def save_model(self, path):
         torch.save(self.actor_critic.state_dict(), path)
-
-    def setup_experience_recorder(self):
-        self.save_queue = queue.Queue()
-        self.save_batch_size = 256
-        self.record_experience = RecordExperience(
-            self.cfg["record_dir"],
-            self.cfg["track_name"],
-            self.cfg["experiment_name"],
-            self.file_logger,
-            self,
-        )
-        self.save_thread = threading.Thread(target=self.record_experience.save_thread)
-        self.save_thread.start()
 
     def setup_vision_encoder(self):
         assert self.cfg["use_encoder_type"] in [
@@ -134,11 +117,8 @@ class SACAgent(BaseAgent):
         self.best_ret = -999
         self.t = 0
         self.deterministic = False
-        self.atol = 1e-3
-        self.store_from_safe = False
         self.pi_scheduler = None
         self.t_start = 0
-        self.best_pct = 0
 
         # This is important: it allows child classes (that extend this one) to "push up" information
         # that this parent class should log
@@ -146,8 +126,7 @@ class SACAgent(BaseAgent):
         self.record = {"transition_actor": ""}
 
         # self.action_space = Box(-1, 1, (4, ))
-        self.action_space = Box(-1, 1, (self.num_envs, 4))
-
+        self.action_space = Box(-1, 1, (self.num_envs, 4), dtype=np.float64)
         # self.act_dim = self.action_space.shape[0]
         self.act_dim = self.action_space.shape[1]
         
@@ -157,7 +136,7 @@ class SACAgent(BaseAgent):
         )
         
         self.actor_critic = ActorCritic(
-            self.obs_dim*self.num_envs,
+            self.obs_dim,
             self.action_space,
             self.cfg,
             latent_dims=self.obs_dim,
@@ -191,7 +170,7 @@ class SACAgent(BaseAgent):
             data["obs2"],
             data["done"],
         )
-
+        
         q1 = self.actor_critic.q1(o, a)
         q2 = self.actor_critic.q2(o, a)
         
@@ -209,8 +188,6 @@ class SACAgent(BaseAgent):
             )
 
         # MSE loss against Bellman backup
-        # loss_q1 = (self.replay_buffer.weights * (q1 - backup) ** 2).mean()
-        # loss_q2 = (self.replay_buffer.weights * (q2 - backup) ** 2).mean()
         loss_q1 = ((q1 - backup) ** 2).mean()
         loss_q2 = ((q2 - backup) ** 2).mean()
 
@@ -243,6 +220,8 @@ class SACAgent(BaseAgent):
         self.q_optimizer.zero_grad()
         loss_q, q_info = self.compute_loss_q(data)
         loss_q.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 40)
+        torch.nn.utils.clip_grad_norm_(self.actor_critic_target.parameters(), 40)
         self.q_optimizer.step()
 
         # Freeze Q-networks so you don't waste computational effort
@@ -255,7 +234,7 @@ class SACAgent(BaseAgent):
         loss_pi, pi_info = self.compute_loss_pi(data)
         loss_pi.backward()
         self.pi_optimizer.step()
-        # self.pi_scheduler.step()
+        self.pi_scheduler.step()
         # Unfreeze Q-networks so you can optimize it at next DDPG step.
         for p in self.q_params:
             p.requires_grad = True
@@ -270,6 +249,8 @@ class SACAgent(BaseAgent):
                 p_targ.data.mul_(self.cfg["polyak"])
                 p_targ.data.add_((1 - self.cfg["polyak"]) * p.data)
 
+        return pi_info, q_info
+
     def _step(self, env, action):
         obs, reward, done, info = env.step(action)
         
@@ -278,7 +259,7 @@ class SACAgent(BaseAgent):
         # print("sending frame id: ", self.frame_id, "received frame id: ", receive_frame_id)
         self.frame_id+=1
         rgb_img, depth_img = self.get_RGB_and_Depth(env)
-        camera = depth_img
+        camera = rgb_img
         
         # return image, features (vae), state, reward, done, info
         return camera, self._encode((obs, camera)), obs, reward, done, info
@@ -300,7 +281,7 @@ class SACAgent(BaseAgent):
         # rgb_img_tile = cv2.vconcat([cv2.hconcat(im_list_h) for im_list_h in rgb_img_list]) #(240, 320, 3)
         rgb_img_tile = np.stack(np.array(rgb_img_list))
         rgb_img_tile = np.squeeze(rgb_img_tile)
-        rgb_img_tile = rgb_img_tile/255.
+        rgb_img_tile = rgb_img_tile
 
         # depth image
         raw_depth_images = env.getDepthImage()
@@ -322,13 +303,13 @@ class SACAgent(BaseAgent):
     def _reset(self, env, random_pos=False):
         obs = env.reset(random=random_pos)
         state = obs
-        self.frame_id = 0 # use for get rgb and depth images
+        # self.frame_id = 0 # use for get rgb and depth images
         # ====== Retrive RGB and Depth Images From the simulator=========
         receive_frame_id = env.render(frame_id = self.frame_id)
         # print("sending frame id: ", self.frame_id, "received frame id: ", receive_frame_id)
         self.frame_id+=1
         rgb_img, depth_img = self.get_RGB_and_Depth(env)
-        camera = depth_img
+        camera = rgb_img
 
         return camera, self._encode((state, camera)), state
 
@@ -340,13 +321,14 @@ class SACAgent(BaseAgent):
         if self.cfg["use_encoder_type"] == "vae":
             # img_embed = self.backbone.encode_raw(img, DEVICE)[0][0]
             img_embed = self.backbone.encode_raw(img, DEVICE)[0]
-
+            
             # state = (torch.tensor((state)).float().reshape(1, -1).to(DEVICE))
             state = (torch.tensor((state)).float().to(DEVICE))
             if len(state.size()) == 1: # handle if num_envs = 1
                 state = state.unsqueeze(0)
             # out = torch.cat([img_embed.unsqueeze(0), state], dim=-1).squeeze(0)  # torch.Size([32])
             out = torch.cat([img_embed, state], dim=-1)
+            
             self.using_state = 1
         else:
             raise NotImplementedError
@@ -368,9 +350,9 @@ class SACAgent(BaseAgent):
             a = self.select_action(features, encode=False)
             d, ep_ret, ep_len, n_val_steps, self.metadata = False, 0, 0, 0, {}
             camera, features, state2, r, d, info = self._step(env, a)
-            experience, t = [], 0
+            t = 0
             
-            while (len(np.nonzero(d)[0]) < 5) & (ep_len <= self.cfg["max_ep_len"]):
+            while (len(np.nonzero(d)[0]) < 4) & (ep_len <= self.cfg["max_ep_len"]):
                 # Take deterministic actions at test time
                 self.deterministic = True
                 self.t = 1e6
@@ -382,22 +364,6 @@ class SACAgent(BaseAgent):
                 ep_len += self.num_envs
                 n_val_steps += 1
 
-                if self.cfg["record_experience"]:
-                    recording = self.add_experience(
-                        action=a,
-                        camera=camera,
-                        next_camera=camera2,
-                        done=d,
-                        env=env,
-                        feature=features,
-                        next_feature=features2,
-                        info=info,
-                        state=state,
-                        next_state=state2,
-                        step=t,
-                    )
-                    experience.append(recording)
-
                 features = features2
                 camera = camera2
                 state = state2
@@ -407,14 +373,12 @@ class SACAgent(BaseAgent):
 
             val_ep_rets.append(ep_ret)
             self.metadata["info"] = info
+            test_r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
+            if sum(test_r) == 0:
+                continue
             self.log_val_metrics_to_tensorboard(info, ep_ret, n_eps, n_val_steps)
 
-            # Quickly dump recently-completed episode's experience to the multithread queue,
-            # as long as the episode resulted in "success"
-            if self.cfg["record_experience"]:  # and self.metadata['info']['success']:
-                self.file_logger("writing experience")
-                self.save_queue.put(experience)
-
+        self.deterministic = False
         self.checkpoint_model(ep_ret, n_eps)
 
         return val_ep_rets
@@ -451,34 +415,26 @@ class SACAgent(BaseAgent):
             self.actor_critic.policy.parameters(), lr=self.cfg["lr"]
         )
         self.q_optimizer = Adam(self.q_params, lr=self.cfg["lr"])
+
+        # self.pi_optimizer = SGD(self.actor_critic.policy.parameters(), lr=self.cfg["lr"])
+        # self.q_optimizer = SGD(self.q_params, lr=self.cfg["lr"])
+
         self.pi_scheduler = torch.optim.lr_scheduler.StepLR(
             self.pi_optimizer, 1, gamma=0.5
         )
-        # # linear learning rate decay
-        # num_of_updates = self.total_timesteps // (self.num_envs * self.cfg['batch_size'])
-        # pi_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     self.pi_optimizer, lr_lambda=lambda step: 1 - (step / float(num_of_updates))
-        # )
-        # q_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     self.pi_optimizer, lr_lambda=lambda step: 1 - (step / float(num_of_updates))
-        # )
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.actor_critic_target.parameters():
             p.requires_grad = False
 
-        # Count variables (protip: try to get a feel for how different size networks behave!)
-        # var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
-
         # Prepare for interaction with environment
-        # start_time = time.time()
-        best_ret, ep_ret, ep_len = 0, 0, 0
+        best_ret, ep_ret, ep_len = -999, 0, 0
+        self.pi_infos, self.q_infos = [], []
         self._reset(env, random_pos=True)
-        dummy_actions = np.random.rand(self.num_envs, self.act_dim) * 2 - np.ones(shape=(self.num_envs, self.act_dim))
+        a = self.action_space.sample()
         
-        camera, feat, state, r, d, info = self._step(env, dummy_actions)
+        camera, feat, state, r, d, info = self._step(env, a)
         
-        experience = []
         state_dim = 55 if self.using_state else 0
         assert (
             len(feat[0])
@@ -490,58 +446,38 @@ class SACAgent(BaseAgent):
         
         for t in range(self.t_start, self.cfg["total_steps"]):
             a = self.select_action(feat, encode=False)
-            
             # Step the env
             camera2, feat2, state2, r, d, info = self._step(env, a)
-            
-            state = state2
             ep_ret += sum(r)/len(r)
             ep_len += self.num_envs
             
             # make training episodic and restart environment on done state
-            if ep_len == self.cfg["max_ep_len"]:
-                d = np.array([True]*self.num_envs)
+            # if ep_len >= self.cfg["max_ep_len"]:
+            #     d = np.array([True]*self.num_envs)
             # d = False if ep_len == self.cfg["max_ep_len"] else d
 
             # Store experience to replay buffer
             self.replay_buffer.store(feat, a, r, feat2, d)
 
-            if self.cfg["record_experience"]:
-                recording = self.add_experience(
-                    action=a,
-                    camera=camera,
-                    next_camera=camera2,
-                    done=d,
-                    env=env,
-                    feature=feat,
-                    next_feature=feat2,
-                    info=info,
-                    reward=r,
-                    state=state,
-                    next_state=state2,
-                    step=t,
-                )
-                experience.append(recording)
-
-                # quickly pass data to save thread
-                # if len(experience) == self.save_batch_size:
-                #    self.save_queue.put(experience)
-                #    experience = []
-
-            # most recent observation!
             feat = feat2
             state = state2
             camera = camera2
 
             # Update handling
             if (t >= self.cfg["update_after"]) & (t % self.cfg["update_every"] == 0):
-                for j in range(self.cfg["update_every"]):
+                # for j in range(self.cfg["update_every"]):
+                for i in range(1):
                     batch = self.replay_buffer.sample_batch(self.cfg["batch_size"])
-                    self.update(data=batch)
+                    pi_info, q_info = self.update(data=batch)
+                self.log_loss_to_tensorboard(pi_info['LogPi'], q_info['Q1Vals'], q_info['Q2Vals'], t)
 
             if (t + 1) % self.cfg["eval_every"] == 0:
-                # eval on test environment
-                val_returns = self.eval(t // self.cfg["eval_every"], env)
+                if best_ret < ep_ret:
+                    best_ret = ep_ret
+                    self.checkpoint_model(ep_ret, t // self.cfg["eval_every"])
+
+                # # eval on test environment
+                # val_returns = self.eval(t // self.cfg["eval_every"], env)
 
                 # Reset
                 (
@@ -552,26 +488,23 @@ class SACAgent(BaseAgent):
                     feat,
                     state,
                     t_start,
-                ) = self.reset_episode(env, t)
+                ) = self.reset_each_env(env, feat, t)
 
             # End of trajectory handling
             if (len(np.nonzero(d)[0]) >= 1) or (ep_len == self.cfg["max_ep_len"]):
+            # if (ep_len >= self.cfg["max_ep_len"]):
+            # if ep_len >= 5000:
+                ep_len = 0
                 self.metadata["info"] = [f for f in info if f != {}]
                 self.episode_num += 1
                 msg = f"[Ep {self.episode_num }] {self.metadata}"
                 print("-----------")
                 self.file_logger(msg)
                 print("-----------")
-                
+                test_r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
+                if sum(test_r) == 0:
+                    continue
                 self.log_train_metrics_to_tensorboard(ep_ret, t, t_start)
-
-                # Quickly dump recently-completed episode's experience to the multithread queue,
-                # as long as the episode resulted in "success"
-                if self.cfg[
-                    "record_experience"
-                ]:  # and self.metadata['info']['success']:
-                    self.file_logger("Writing experience")
-                    self.save_queue.put(experience)
 
                 # Reset
                 (
@@ -582,54 +515,36 @@ class SACAgent(BaseAgent):
                     feat,
                     state,
                     t_start,
-                ) = self.reset_episode(env, t)
+                ) = self.reset_each_env(env, feat, t)#self.reset_episode(env, t)
+
+    def reset_each_env(self, env, feat, t):
+        action = self.select_action(feat, encode=False)
+        ep_ret, ep_len, self.metadata, experience = 0, 0, {}, []
+        t_start = t + 1
+        camera, feat, state, r, d, info = self._step(env, action)
+        return camera, ep_len, ep_ret, experience, feat, state, t_start
 
     def reset_episode(self, env, t):
         camera, feat, state = self._reset(env, random_pos=True)
         ep_ret, ep_len, self.metadata, experience = 0, 0, {}, []
         t_start = t + 1
-        dummy_actions = np.random.rand(self.num_envs, self.act_dim) * 2 - np.ones(shape=(self.num_envs, self.act_dim))
-        camera, feat, state2, r, d, info = self._step(env, dummy_actions)
+        action = self.select_action(feat, encode=False)
+        camera, feat, state2, r, d, info = self._step(env, action)
         return camera, ep_len, ep_ret, experience, feat, state, t_start
 
-    def add_experience(
-        self,
-        action,
-        camera,
-        next_camera,
-        done,
-        env,
-        feature,
-        next_feature,
-        info,
-        reward,
-        state,
-        next_state,
-        step,
-    ):
-        self.recording = {
-            "step": step,
-            "nearest_idx": env.nearest_idx,
-            "camera": camera,
-            "feature": feature.detach().cpu().numpy(),
-            "state": state,
-            "action_taken": action,
-            "next_camera": next_camera,
-            "next_feature": next_feature.detach().cpu().numpy(),
-            "next_state": next_state,
-            "reward": reward,
-            "episode": self.episode_num,
-            "stage": "training",
-            "done": done,
-            "transition_actor": self.record["transition_actor"],
-            "metadata": info,
-        }
-        return self.recording
+    
+    def log_loss_to_tensorboard(self, pi_loss, q1_loss, q2_loss, n_eps):
+        pi_loss = np.mean(pi_loss)
+        q1_loss = np.mean(q1_loss)
+        q2_loss = np.mean(q2_loss)
+        self.tb_logger.add_scalar("loss/pi_loss", pi_loss, n_eps)
+        self.tb_logger.add_scalar("loss/q1_loss", q1_loss, n_eps)
+        self.tb_logger.add_scalar("loss/q2_loss", q2_loss, n_eps)
 
     def log_val_metrics_to_tensorboard(self, info, ep_ret, n_eps, n_val_steps):
         self.tb_logger.add_scalar("val/episodic_return", ep_ret, n_eps)
         self.tb_logger.add_scalar("val/ep_n_steps", n_val_steps, n_eps)
-        r = [v["episode"]["r"] + 1 for v in self.metadata["info"] if v != {}]
+        r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
         lin_vel_reward = [v["episode"]["lin_vel_reward"] for v in self.metadata["info"] if v != {}]
         collision_penalty = [v["episode"]["collision_penalty"] for v in self.metadata["info"] if v != {}]
@@ -678,7 +593,7 @@ class SACAgent(BaseAgent):
     def log_train_metrics_to_tensorboard(self, ep_ret, t, t_start):
         self.tb_logger.add_scalar("train/lr", np.array(self.pi_scheduler.get_last_lr()), self.episode_num)
         self.tb_logger.add_scalar("train/episodic_return", ep_ret, self.episode_num)
-        r = [v["episode"]["r"] + 1 for v in self.metadata["info"] if v != {}]
+        r = [v["episode"]["r"] for v in self.metadata["info"] if v != {}]
         l = [v["episode"]["l"] for v in self.metadata["info"] if v != {}]
         lin_vel_reward = [v["episode"]["lin_vel_reward"] for v in self.metadata["info"] if v != {}]
         collision_penalty = [v["episode"]["collision_penalty"] for v in self.metadata["info"] if v != {}]
@@ -693,7 +608,7 @@ class SACAgent(BaseAgent):
         survive_rew_mean = sum(survive_rew) / len(survive_rew)
 
         self.tb_logger.add_scalar(
-            "train/ep_total_rewards",
+            "train/ep_rew_mean",
             r_mean,
             self.episode_num,
         )

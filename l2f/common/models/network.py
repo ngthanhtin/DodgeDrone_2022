@@ -53,11 +53,11 @@ class ActorCritic(nn.Module):
         super().__init__()
         self.cfg = cfg
         obs_dim = observation_space.shape[0] if latent_dims is None else latent_dims
-        act_dim = action_space.shape[1] # 0
-        # act_limit = action_space.high
-        
-        act_limit = (action_space.high - action_space.low) / 2.
-        act_bias = (action_space.high + action_space.low) / 2.
+        act_dim = action_space.shape[1]
+        act_limit = action_space.high
+
+        # act_limit = (action_space.high - action_space.low) / 2.
+        # act_bias = (action_space.high + action_space.low) / 2.
 
         # build policy and value functions
         self.state_encoder = mlp(
@@ -70,7 +70,6 @@ class ActorCritic(nn.Module):
             cfg[cfg["use_encoder_type"]]["actor_hiddens"],
             activation,
             act_limit,
-            act_bias
         )
 
         self.q1 = Qfunction(cfg)

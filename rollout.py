@@ -19,12 +19,12 @@ def run_evaluation(args):
     )
 
     # Init evaluator
-    evaluator.create_env()
+    evaluator.create_env(args.render)
     evaluator.init_agent()
 
     if args.train: # Training
         try:
-            evaluator.train()
+            evaluator.train(render=args.render)
         except timeout_decorator.TimeoutError:
             logger.info("Stopping pre-evaluation run")
     else: # Evaluate
@@ -35,6 +35,7 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", type=int, default=1, help="1: Train, 0: Evaluate")
     parser.add_argument("--n_envs", type=int, default=100, help="100: Train, 1: Evaluate")
+    parser.add_argument("--render", type=int, default=0, help="1: visualize")
     return parser
 
 if __name__ == "__main__":

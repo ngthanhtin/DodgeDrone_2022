@@ -7,38 +7,33 @@ agent_kwargs:
     encoder_switch: 1
     use_encoder_type: "vae" 
     vae:
-        vae_chkpt_statedict: './python2/l2f/common/models/vae_144w_42h_32latent.pth'
-        latent_dims: 32
+        vae_chkpt_statedict: './python2/l2f/common/models/vae.pth'
+        latent_dims: 64
         hiddens: [32, 64, 64, 32, 32]
-        state_hiddens:  [8, 8]
-        actor_hiddens: [64, 64, 32]
-        im_c: 1
-        im_w: 144
-        im_h: 144
-        ac_input_dims: 32 
-    seed: 0
+        state_hiddens:  [32, 8]
+        actor_hiddens: [512, 256, 64]
+        im_c: 3
+        im_w: 224
+        im_h: 224
+        ac_input_dims: 32
+    seed: 1024
     gamma: 0.99
-    polyak: 0.995
-    lr: 0.0003
+    polyak: 0.99
+    lr: 0.003
     alpha: 0.2
     num_test_episodes: 1
-    safety_margin: 4.2
     save_episodes: 1
     save_freq: 10
     total_steps: 5000000
-    replay_size: 25000
-    batch_size: 512
-    start_steps: 2000
-    update_after: 1000
+    replay_size: 1000000
+    batch_size: 5000
+    start_steps: 100000
+    update_after: 100
     update_every: 1
-    eval_every: 500
-    max_ep_len: 50000
-    im_w: 144
-    im_h: 144
+    eval_every: 256
+    max_ep_len: 1000
+    im_w: 224
+    im_h: 224
     checkpoint: 'models/sac/checkpoints/best_sac_local_encoder-vae_small_seed-249_episode_480.statedict'
     model_save_path: './python2/results'
-    track_name: 'Thruxton'
-    safety_data: '${PREFIX}/l2r/datasets/l2r/datasets/safety_sets'
     record_dir: '${PREFIX}/l2r/datasets/l2r/datasets/safety_records_dataset/'
-    runtime: local
-    dirhash: ''

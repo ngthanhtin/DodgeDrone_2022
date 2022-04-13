@@ -56,7 +56,7 @@ def main():
     act_dim = env.act_dim
     num_env = env.num_envs
 
-    env.reset(random=True)
+    env.reset(random=False)
 
     # connect unity
     if args.render:
@@ -110,7 +110,6 @@ def main():
       
       # wait for the purpose of using open cv visualization
       cv2.waitKey(500)
-
     #
     if args.render:
         env.disconnectUnity()

@@ -14,10 +14,10 @@ class ReplayBuffer:
         self.num_envs = num_envs
         
         self.obs_buf = np.zeros(
-            (size, num_envs, obs_dim), dtype=np.float32
+            (size, num_envs, obs_dim), dtype=np.uint8
         )  
         self.obs2_buf = np.zeros(
-            (size, num_envs, obs_dim), dtype=np.float32
+            (size, num_envs, obs_dim), dtype=np.uint8
         )  
         self.act_buf = np.zeros(
             (size, num_envs, act_dim), dtype=np.float32
@@ -25,7 +25,6 @@ class ReplayBuffer:
         self.rew_buf = np.zeros((size, num_envs), dtype=np.float32)
         self.done_buf = np.zeros((size, num_envs), dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
-        self.weights = None
 
     def store(self, obs, act, rew, next_obs, done):
         # pdb.set_trace()

@@ -6,6 +6,7 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html#documentation-pytorc
 Source:
 https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/core.py
 """
+from cmath import pi
 import numpy as np
 
 import torch
@@ -40,7 +41,7 @@ from stable_baselines3.common.utils import get_device
 DEVICE = get_device('auto')
 
 class SquashedGaussianMLPActor(nn.Module):
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit, act_bias):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         super().__init__()
         
         self.net = mlp([obs_dim] + list(hidden_sizes), activation, activation)
@@ -48,7 +49,6 @@ class SquashedGaussianMLPActor(nn.Module):
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.act_limit = torch.Tensor(act_limit).to(DEVICE)
-        self.act_bias = torch.Tensor(act_bias).to(DEVICE)
 
     def forward(self, obs, deterministic=False, with_logprob=True):
         net_out = self.net(obs)
@@ -56,12 +56,9 @@ class SquashedGaussianMLPActor(nn.Module):
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
+        
         # Pre-squash distribution and sample
-        try:
-            pi_distribution = Normal(mu, std)
-        except ValueError:
-            pdb.set_trace()
-            pass
+        pi_distribution = Normal(mu, std)
 
         if deterministic:
             # Only used for evaluating policy at test time.
@@ -84,7 +81,9 @@ class SquashedGaussianMLPActor(nn.Module):
             logp_pi = None
         
         pi_action = torch.tanh(pi_action)
-        pi_action = self.act_limit * pi_action + self.act_bias
+        pi_action = self.act_limit * pi_action
+        # m = nn.ReLU()
+        # pi_action = m(pi_action)
         
         return pi_action, logp_pi
 
