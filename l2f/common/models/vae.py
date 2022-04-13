@@ -4,7 +4,11 @@ variational autoencoder in PyTorch.
 
 Source: https://github.com/sksq96/pytorch-vae
 """
+import os
 import cv2
+import random
+from PIL import Image
+import matplotlib.pyplot as plt
 import tqdm
 import numpy as np
 import torch
@@ -38,7 +42,6 @@ class VAE(nn.Module):
         sample_img = torch.zeros([1, im_c, im_h, im_w])
         em_shape = nn.Sequential(*encoder_list[:-1])(sample_img).shape[1:]
         h_dim = np.prod(em_shape)
-        
         self.fc1 = nn.Linear(h_dim, z_dim)
         self.fc2 = nn.Linear(h_dim, z_dim)
         self.fc3 = nn.Linear(z_dim, h_dim)
@@ -113,66 +116,82 @@ class VAE(nn.Module):
         kld = -0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp())
         return bce + kld * kld_weight
 
+def test():
+    device = 'cuda:0'
+    model = VAE(im_c=3, im_h=144, im_w=144, z_dim=32).to(device)
+    weight_path = '/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/l2f/common/models/vae.pth'
+    print('load initial weights from: %s'%(weight_path))
+    model.load_state_dict(torch.load(weight_path))
+    model.eval()
+    folder = '/home/tinvn/TIN/Agileflight_pictures/RGB/images/'
+    files = os.listdir(folder)
+    f = random.choice(files)
 
-if __name__ == "__main__":
-    # with 0~255
+    image_path = folder + f
+    # image_path = "/home/tinvn/Desktop/14167.png"
+    image = cv2.imread(image_path)
+    image = cv2.resize(image, (144, 144))
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    image_pil = Image.fromarray(image)
+    # image = image/255
+    # print(image)
+    
+    
+    # to_tensor = transforms.ToTensor()
+    image = torch.Tensor(image)
+    image = image.permute(-1,0,1)
+    image = image.unsqueeze(0)
+    
+    image = image.to(device)
+    z, mu, logvar = model.encode(image)
+    decoder = model.decode(z)
+    decoder = decoder.squeeze()
+    decoder = decoder.permute(1, 2, 0)
+    
+    f = plt.figure()
+    f.add_subplot(1,1, 1) #1,2,1
+    plt.imshow(decoder.cpu().detach().numpy())
+
+    # f.add_subplot(1,2, 2)
+    # plt.imshow(image_pil)
+    plt.show()
+
+def train():
+    #train AE
+    device = 'cuda:2'
+    img_w, img_h = 224, 224
+    z_dim = 128
+    im_channel = 3
+    model = VAE(im_c=im_channel, im_h=img_h, im_w=img_w, z_dim=z_dim).to(device)
+    # model.load_state_dict(torch.load('/home/tinvn/TIN/Drone_Challenge/src/agile_flight/envtest/python2/l2f/common/models/vae.pth'))
+    lr = 1e-2
+    optim = torch.optim.Adamax(filter(lambda p: p.requires_grad, model.parameters()))
+    optim = torch.optim.Adam(model.parameters(), lr=lr)
+    #load data
+    # ToTensor already divided the image by 255
+    batch_size = 16
     dataset = datasets.ImageFolder('/home/tinvn/TIN/Agileflight_pictures/RGB/', \
-        transform=transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()]))
-    # data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=True)
-    
-    device = "cuda:2" if torch.cuda.is_available() else "cpu"
-    bsz = 32
-    lr = 1e-4
-
-    n = len(dataset)
-    indices = np.random.permutation(n)
-    thres = int(n * 0.9)
-    train_indices, valid_indices = indices[:thres], indices[thres:]
-    # Creating PT data samplers and loaders:
-    train_sampler = SubsetRandomSampler(train_indices)
-    valid_sampler = SubsetRandomSampler(valid_indices)
-
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=bsz, 
-                                            sampler=train_sampler)
-    validation_loader = torch.utils.data.DataLoader(dataset, batch_size=bsz,
-                                                    sampler=valid_sampler)
-
-
-    
-    vae = VAE(im_c=3, im_h=224, im_w=224, z_dim=64).to(device)
-    optim = torch.optim.Adam(vae.parameters(), lr=lr)
-    num_epochs = 1000
-    best_loss = 1e10
-    for epoch in range(num_epochs):
-        
-        train_loss = []
-        # Train
-        vae.train()
-        # Train:   
-        for batch_index, data in enumerate(train_loader):
+         transform=transforms.Compose([transforms.Resize((img_w, img_h)), transforms.ToTensor()]))
+    data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
+    #train
+    epochs = 100
+    for epoch in range(0, epochs):
+        current_loss = 0
+        for i,data in enumerate(data_loader,0):
             input, _ = data
             input = input.to(device)
             
-            loss = vae.loss(input, *vae(input))
             optim.zero_grad()
+            loss = model.loss(input, *model(input))
             loss.backward()
             optim.step()
-            train_loss.append(loss.item())
-        train_loss = np.mean(train_loss)
-        test_loss = []
-        # Eval
-        vae.eval()
-        for batch_index, data in enumerate(validation_loader):
-            input, _ = data
-            # input = input.view(input.size(0), input.size(2), input.size(3), -1)
-            input = input.to(device)
 
-            loss = vae.loss(input, *vae(input), kld_weight=0.0)
-            test_loss.append(loss.item())
-        test_loss = np.mean(test_loss)
-        print(f"#{epoch + 1} train_loss: {train_loss:.6f}, test_loss: {test_loss:.6f}")
-        if test_loss < best_loss and epoch > num_epochs / 10:
-            best_loss = test_loss
-            print(f"save model at epoch #{epoch + 1}")
-            torch.save(vae.state_dict(), "vae.pth")
+            loss = loss.item()
+            current_loss += loss
+        print('{} loss : {}'.format(epoch+1, batch_size*current_loss/len(data_loader)))
+
+    torch.save(model.state_dict(), "vae{}.pth".format(img_w))
         
+
+if __name__ == "__main__":
+    train()
